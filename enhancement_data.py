@@ -1,3 +1,4 @@
+from openpyxl.reader.excel import load_workbook
 from pymongo import MongoClient
 
 client = MongoClient()
@@ -22,14 +23,16 @@ db = client['JiraRepos']
 mongo_collection = db['RedHat']
 
 #x = mongo_collection.find_one({"fields.issuetype.name": "Bug"})
+
+
 x = mongo_collection.find(
     {"$and": [{"fields.issuetype.name": "Enhancement"}, {"fields.resolutiondate": {"$ne": None}}]})
 
 dateslist = []
 for issue in x:
-    #print(issue["fields"]["resolutiondate"])
+
     dateslist.append(issue["fields"]["resolutiondate"])
-#print(x["fields"]["issuetype"]["name"])
+
 
 
 client.close()
@@ -47,38 +50,10 @@ df1.columns = ['DATE', 'Count']
 
 #df1.to_excel("enhancement_data_filtered.xlsx")
 
-month_forecast_target = 7
-
-year_historic_target = 2016
-
-max_rng = calendar._monthlen(year_historic_target, month_forecast_target)
-
-
 class MonthData:
     def __init__(self, days, counts):
         self.days = days
         self.counts = counts
-
-
-df1['DATE'] = pd.to_datetime(df1.DATE, format='%Y-%m-%d')
-
-filtered_df = df1[df1['DATE'].dt.year == year_historic_target]
-
-filtered_df = filtered_df[filtered_df['DATE'].dt.month == month_forecast_target]
-
-throughput_days = []
-
-throughput_counts = []
-
-for x in range(1, max_rng + 1):
-    throughput_days.append(x)
-    throughput_counts.append(0)
-
-#Completamos el objeto para simular
-
-for index, row in filtered_df.iterrows():
-    throughput_counts[row["DATE"].day - 1] = row["Count"]
-
 
 #Montecarlo
 
@@ -89,37 +64,71 @@ class Simulation:
         self.taor = taor
 
 
-taor = 0
 
-montecarlo_target = 100000
+for x in range(7,10):
+    month_forecast_target = x
 
-list_of_simulations = []
+    year_historic_target = 2016
 
-#Bucle generativo
+    max_rng = calendar._monthlen(year_historic_target, month_forecast_target)
 
-for x in range(1, montecarlo_target):
-    simulated_throughtput = 0
-    for day in throughput_days:
-        rng_tmp = random.randint(1, max_rng)
-        simulated_throughtput = simulated_throughtput + throughput_counts[rng_tmp - 1]
 
-    aux = 0
-    found = False
+    df1['DATE'] = pd.to_datetime(df1.DATE, format='%Y-%m-%d')
 
-    for simulation in list_of_simulations:
-        if simulation.simulated_throughtput == simulated_throughtput:
-            tmp_simulation = simulation
-            tmp_simulation.count = tmp_simulation.count + 1
-            list_of_simulations[aux] = tmp_simulation
-            found = True
-            break
-        aux = aux + 1
-    if not found:
-        list_of_simulations.append(Simulation(simulated_throughtput, 1, x))
+    filtered_df = df1[df1['DATE'].dt.year == year_historic_target]
 
-montecarlo_output = pd.DataFrame([t.__dict__ for t in list_of_simulations ])
+    filtered_df = filtered_df[filtered_df['DATE'].dt.month == month_forecast_target]
 
-montecarlo_output.to_excel("enhancement_montecarlo_output.xlsx")
+    throughput_days = []
+
+    throughput_counts = []
+
+    for x in range(1, max_rng + 1):
+        throughput_days.append(x)
+        throughput_counts.append(0)
+
+    #Completamos el objeto para simular
+
+    for index, row in filtered_df.iterrows():
+        throughput_counts[row["DATE"].day - 1] = row["Count"]
+
+
+    taor = 0
+
+    montecarlo_target = 100000
+
+    list_of_simulations = []
+
+    #Bucle generativo
+
+    for x in range(1, montecarlo_target+1):
+        simulated_throughtput = 0
+        for day in throughput_days:
+            rng_tmp = random.randint(1, max_rng)
+            simulated_throughtput = simulated_throughtput + throughput_counts[rng_tmp - 1]
+
+        aux = 0
+        found = False
+
+        for simulation in list_of_simulations:
+            if simulation.simulated_throughtput == simulated_throughtput:
+                tmp_simulation = simulation
+                tmp_simulation.count = tmp_simulation.count + 1
+                list_of_simulations[aux] = tmp_simulation
+                found = True
+                break
+            aux = aux + 1
+        if not found:
+            list_of_simulations.append(Simulation(simulated_throughtput, 1, x))
+
+    montecarlo_output = pd.DataFrame([t.__dict__ for t in list_of_simulations ])
+    writer = pd.ExcelWriter("enhancement_montecarlo_output"+str(month_forecast_target)+".xlsx", engine="openpyxl")
+    data_throughtput={'days':throughput_days, 'counts':throughput_counts}
+    df_throughtput= pd.DataFrame(data_throughtput)
+    montecarlo_output.to_excel(writer,sheet_name="data")
+    df_throughtput.to_excel(writer,sheet_name="throughtput")
+
+    writer.close()
 
 
 
